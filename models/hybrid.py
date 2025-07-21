@@ -16,13 +16,13 @@ class HybridMLP(torch.nn.Module):
         Arguments:
         - m1, m2: different algorithms
         - combination_method (str): how to combine algorithm outputs
-        - alpha (float): weighting factor for weighted combination
+        - alpha (float): if weighted, weighting factor for m1, 1 - alpha for m2
         """
         super().__init__()
         self.m1 = m1
         self.m2 = m2
         self.num_outputs=m1.num_outputs
-        
+
         self.combination_method = combination_method
         self.alpha = alpha
         self.step_count = 0
@@ -56,7 +56,7 @@ class HybridMLP(torch.nn.Module):
     def _weighted_combination(
         self, m1_output: torch.Tensor, m2_output: torch.Tensor
     ) -> torch.Tensor:
-        return (1 - self.alpha) * m1_output + self.alpha * m2_output
+        return self.alpha * m1_output + (1 - self.alpha) * m2_output
 
     def _alternating_combination(
         self, m1_output: torch.Tensor, m2_output: torch.Tensor
