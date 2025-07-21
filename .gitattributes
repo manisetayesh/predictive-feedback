@@ -1,0 +1,4 @@
+data/__init__.py filter=lfs diff=lfs merge=lfs -text
+data/EMNIST filter=lfs diff=lfs merge=lfs -text
+data/MNIST filter=lfs diff=lfs merge=lfs -text
+data/omniglot-py filter=lfs diff=lfs merge=lfs -text
