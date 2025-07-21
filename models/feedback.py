@@ -45,7 +45,7 @@ def train_model_mirror(MLP, train_loader, valid_loader, optimizer, num_epochs=5,
 
   for e in tqdm(range(num_epochs)):
     no_train = True if e == 0 else False # to get a baseline
-    latest_epoch_results_dict = train_epoch(
+    latest_epoch_results_dict = train_epoch_mirror(
         MLP, train_loader, valid_loader, optimizer=optimizer, loss_type=loss_type, no_train=no_train, mirror=mirror, m_lr=m_lr, noise_amplitude=noise_amplitude
         )
 
