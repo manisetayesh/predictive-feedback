@@ -1,7 +1,6 @@
 import torch
-from mlp import MultiLayerPerceptron
 from typing import Literal
-class HybridMLP(MultiLayerPerceptron):
+class HybridMLP(torch.nn.Module):
     def __init__(
         self,
         m1,
@@ -19,9 +18,11 @@ class HybridMLP(MultiLayerPerceptron):
         - combination_method (str): how to combine algorithm outputs
         - alpha (float): weighting factor for weighted combination
         """
-        super().__init__(**kwargs)
+        super().__init__()
         self.m1 = m1
         self.m2 = m2
+        self.num_outputs=m1.num_outputs
+        
         self.combination_method = combination_method
         self.alpha = alpha
         self.step_count = 0
