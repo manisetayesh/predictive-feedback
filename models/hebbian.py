@@ -1,5 +1,5 @@
 import torch
-from mlp import MultiLayerPerceptron
+from .mlp import MultiLayerPerceptron
 class HebbianFunction(torch.autograd.Function):
     """
     Gradient computing function class for Hebbian learning.

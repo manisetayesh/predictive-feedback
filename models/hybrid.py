@@ -4,8 +4,8 @@ from typing import Literal
 class HybridMLP(MultiLayerPerceptron):
     def __init__(
         self,
-        predictive_encoder,
-        weight_mirroring,
+        m1,
+        m2,
         combination_method: Literal[
             "average", "weighted", "alternating"
         ] = "average",
@@ -13,17 +13,15 @@ class HybridMLP(MultiLayerPerceptron):
         **kwargs
     ):
         """
-        Initialize hybrid MLP with predictive encoding and weight mirroring algorithms.
-
+        Initialize hybrid MLP with two algorithms
         Arguments:
-        - predictive_encoder: Module implementing predictive encoding
-        - weight_mirroring: Module implementing weight mirroring
+        - m1, m2: different algorithms
         - combination_method (str): how to combine algorithm outputs
         - alpha (float): weighting factor for weighted combination
         """
         super().__init__(**kwargs)
-        self.predictive_encoder = predictive_encoder
-        self.weight_mirroring = weight_mirroring
+        self.m1 = m1
+        self.m2 = m2
         self.combination_method = combination_method
         self.alpha = alpha
         self.step_count = 0
@@ -38,35 +36,35 @@ class HybridMLP(MultiLayerPerceptron):
         Returns:
         - y_pred (torch.Tensor): Combined predicted targets
         """
-        pred_output = self.predictive_encoder(X, y)
-        mirror_output = self.weight_mirroring(X, y)
+        m1_output = self.m1(X, y)
+        m2_output = self.m2(X, y)
         if self.combination_method == "average":
-            return self._average_combination(pred_output, mirror_output)
+            return self._average_combination(m1_output, m2_output)
         elif self.combination_method == "weighted":
-            return self._weighted_combination(pred_output, mirror_output)
+            return self._weighted_combination(m1_output, m2_output)
         elif self.combination_method == "alternating":
-            return self._alternating_combination(pred_output, mirror_output)
+            return self._alternating_combination(m1_output, m2_output)
         else:
             raise ValueError(f"Unknown combination method: {self.combination_method}")
 
     def _average_combination(
-        self, pred_output: torch.Tensor, mirror_output: torch.Tensor
+        self, m1_output: torch.Tensor, m2_output: torch.Tensor
     ) -> torch.Tensor:
-        return (pred_output + mirror_output) / 2.0
+        return (m1_output + m2_output) / 2.0
 
     def _weighted_combination(
-        self, pred_output: torch.Tensor, mirror_output: torch.Tensor
+        self, m1_output: torch.Tensor, m2_output: torch.Tensor
     ) -> torch.Tensor:
-        return (1 - self.alpha) * pred_output + self.alpha * mirror_output
+        return (1 - self.alpha) * m1_output + self.alpha * m2_output
 
     def _alternating_combination(
-        self, pred_output: torch.Tensor, mirror_output: torch.Tensor
+        self, m1_output: torch.Tensor, m2_output: torch.Tensor
     ) -> torch.Tensor:
         self.step_count += 1
         if self.step_count % 2 == 0:
-            return pred_output
+            return m1_output
         else:
-            return mirror_output
+            return m2_output
 
     def list_parameters(self):
         """
@@ -77,10 +75,10 @@ class HybridMLP(MultiLayerPerceptron):
         """
         params_list = super().list_parameters()
         # Add sub-algorithm parameters
-        for name, _ in self.predictive_encoder.named_parameters():
-            params_list.append(f"predictive_encoder.{name}")
-        for name, _ in self.weight_mirroring.named_parameters():
-            params_list.append(f"weight_mirroring.{name}")
+        for name, _ in self.m1.named_parameters():
+            params_list.append(f"m1.{name}")
+        for name, _ in self.m2.named_parameters():
+            params_list.append(f"m2.{name}")
 
         return params_list
 
@@ -93,14 +91,14 @@ class HybridMLP(MultiLayerPerceptron):
         """
         gradient_dict = super().gather_gradient_dict()
         # Add gradients from each alg
-        for name, param in self.predictive_encoder.named_parameters():
+        for name, param in self.m1.named_parameters():
             if param.grad is not None:
-                gradient_dict[f"predictive_encoder.{name}"] = (
+                gradient_dict[f"m1.{name}"] = (
                     param.grad.detach().clone().numpy()
                 )
-        for name, param in self.weight_mirroring.named_parameters():
+        for name, param in self.m2.named_parameters():
             if param.grad is not None:
-                gradient_dict[f"weight_mirroring.{name}"] = (
+                gradient_dict[f"m2.{name}"] = (
                     param.grad.detach().clone().numpy()
                 )
 
