@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
-from typing import Literal, Optional
+from typing import Literal
+
+from models.feedback import FAPerceptron
 
 
 class HybridMLP(torch.nn.Module):
@@ -14,6 +16,8 @@ class HybridMLP(torch.nn.Module):
             "alternating",
             "gating",
             "concat",
+            "chain",
+            "stitch",
         ] = "average",
         **kwargs,
     ):
@@ -30,22 +34,31 @@ class HybridMLP(torch.nn.Module):
             self.weight_param = nn.Parameter(
                 torch.tensor(self.alpha, dtype=torch.float32)
             )
-        elif self.combination_method == "gating":
-            input_gate_dim = self.num_outputs * 2
-            hidden_gate_size = kwargs.get("num_hidden", 64)
-            self.gating_net = nn.Sequential(
-                nn.Linear(input_gate_dim, hidden_gate_size),
-                nn.ReLU(),
-                nn.Linear(hidden_gate_size, 1),
-                nn.Sigmoid(),
+        elif self.combination_method == "stitch":
+            first_m1 = list(self.m1.children())[0]
+            rest_of_m2 = nn.Sequential(*list(self.m2.children())[1:])
+            input_dim = first_m1.out_features
+            expected_dim = list(self.m2.children())[1].in_features
+            adapter = nn.Linear(input_dim, expected_dim)
+            self.mlp = nn.Sequential(first_m1, adapter, *rest_of_m2)
+
+        elif self.combination_method == "chain":
+            self.mlp = type(self.m2)(
+                num_inputs=self.m1.num_outputs,
+                num_outputs=self.m2.num_outputs,
+                num_hidden=self.m2.num_hidden,
+                activation_type=self.m2.activation_type,
+                bias=True,
             )
-        elif self.combination_method == "concat":
-            input_concat_dim = self.num_outputs * 2
-            hidden_mlp_size = kwargs.get("num_hidden", self.num_outputs * 4)
-            self.combination_mlp = nn.Sequential(
-                nn.Linear(input_concat_dim, hidden_mlp_size),
-                nn.ReLU(),
-                nn.Linear(hidden_mlp_size, self.num_outputs),
+        else:
+            NUM_HIDDEN = kwargs.get("num_hidden", self.num_outputs)
+            ACTIVATION = kwargs.get("num_hidden", self.m1.activation_type)
+            self.mlp = FAPerceptron(
+                num_inputs=self.num_outputs * 2,
+                num_outputs=self.num_outputs,
+                num_hidden=NUM_HIDDEN,
+                activation_type=ACTIVATION,
+                bias=True,
             )
 
     def forward(self, X, y=None):
@@ -55,27 +68,26 @@ class HybridMLP(torch.nn.Module):
 
         m1_output = self.m1(X, y)
         m2_output = self.m2(X, y)
+        method = self.combination_method
 
-        if self.combination_method == "average":
-            combined_output = self._average_combination(m1_output, m2_output)
-        elif self.combination_method == "weighted":
+        if method == "chain":
+            combined_output = self.mlp(m1_output, y)
+        elif method == "stitch":
+            combined_output = self.mlp(X.reshape(-1, self.m1.num_inputs))
+        elif method == "average":
+            combined_output = (m1_output + m2_output) / 2.0
+        elif method== "weighted":
             combined_output = self._weighted_combination(m1_output, m2_output)
-        elif self.combination_method == "alternating":
+        elif method == "alternating":
             combined_output = self._alternating_combination(m1_output, m2_output)
-        elif self.combination_method == "gating":
-            combined_output = self._gating_combination(m1_output, m2_output)
-        elif self.combination_method == "concat":
+        elif method == "gating":
+            gate = self._concat_combination(m1_output, m2_output)
+            combined_output = gate * m1_output + (1 - gate) * m2_output
+        elif method == "concat":
             combined_output = self._concat_combination(m1_output, m2_output)
         else:
-            raise ValueError(
-                f"Unknown combination method: {self.combination_method}"
-            )
+            raise ValueError(f"Unknown combination method: {method}")
         return combined_output, m1_output, m2_output
-
-    def _average_combination(
-        self, m1_output: torch.Tensor, m2_output: torch.Tensor
-    ) -> torch.Tensor:
-        return (m1_output + m2_output) / 2.0
 
     def _alternating_combination(
         self, m1_output: torch.Tensor, m2_output: torch.Tensor
@@ -90,21 +102,13 @@ class HybridMLP(torch.nn.Module):
         self, m1_output: torch.Tensor, m2_output: torch.Tensor
     ) -> torch.Tensor:
         weight_m1 = torch.sigmoid(self.weight_param)
-        weight_m2 = 1 - weight_m1
-        return weight_m1 * m1_output + weight_m2 * m2_output
-
-    def _gating_combination(
-        self, m1_output: torch.Tensor, m2_output: torch.Tensor
-    ) -> torch.Tensor:
-        combined_outputs = torch.cat((m1_output, m2_output), dim=-1)
-        gate = self.gating_net(combined_outputs)
-        return gate * m1_output + (1 - gate) * m2_output
+        return weight_m1 * m1_output + (1 - weight_m1) * m2_output
 
     def _concat_combination(
         self, m1_output: torch.Tensor, m2_output: torch.Tensor
     ) -> torch.Tensor:
         combined_outputs = torch.cat((m1_output, m2_output), dim=-1)
-        return self.combination_mlp(combined_outputs)
+        return self.mlp(combined_outputs)
 
     def list_parameters(self):
         """
