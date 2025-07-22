@@ -1,62 +1,81 @@
 import torch
-from typing import Literal
+import torch.nn as nn
+from typing import Literal, Optional
+
+
 class HybridMLP(torch.nn.Module):
     def __init__(
         self,
-        m1,
-        m2,
+        m1: nn.Module,
+        m2: nn.Module,
         combination_method: Literal[
-            "average", "weighted", "alternating"
+            "average",
+            "weighted",
+            "alternating",
+            "gating",
+            "concat",
         ] = "average",
-        alpha: float = 0.5,
-        **kwargs
+        **kwargs,
     ):
-        """
-        Initialize hybrid MLP with two algorithms
-        Arguments:
-        - m1, m2: different algorithms
-        - combination_method (str): how to combine algorithm outputs
-        - alpha (float): if weighted, weighting factor for m1, 1 - alpha for m2
-        """
         super().__init__()
         self.m1 = m1
         self.m2 = m2
-        self.num_outputs=m1.num_outputs
 
+        self.num_outputs = m1.num_outputs
         self.combination_method = combination_method
-        self.alpha = alpha
+        self.alpha = 0.5
         self.step_count = 0
+
+        if self.combination_method == "weighted":
+            self.weight_param = nn.Parameter(
+                torch.tensor(self.alpha, dtype=torch.float32)
+            )
+        elif self.combination_method == "gating":
+            input_gate_dim = self.num_outputs * 2
+            hidden_gate_size = kwargs.get("num_hidden", 64)
+            self.gating_net = nn.Sequential(
+                nn.Linear(input_gate_dim, hidden_gate_size),
+                nn.ReLU(),
+                nn.Linear(hidden_gate_size, 1),
+                nn.Sigmoid(),
+            )
+        elif self.combination_method == "concat":
+            input_concat_dim = self.num_outputs * 2
+            hidden_mlp_size = kwargs.get("num_hidden", self.num_outputs * 4)
+            self.combination_mlp = nn.Sequential(
+                nn.Linear(input_concat_dim, hidden_mlp_size),
+                nn.ReLU(),
+                nn.Linear(hidden_mlp_size, self.num_outputs),
+            )
 
     def forward(self, X, y=None):
         """
         Forward pass combining both algorithms.
-
-        Arguments:
-        - X (torch.Tensor): Batch of input images
-        - y (torch.Tensor, optional): Batch of targets
-        Returns:
-        - y_pred (torch.Tensor): Combined predicted targets
         """
+
         m1_output = self.m1(X, y)
         m2_output = self.m2(X, y)
+
         if self.combination_method == "average":
-            return self._average_combination(m1_output, m2_output)
+            combined_output = self._average_combination(m1_output, m2_output)
         elif self.combination_method == "weighted":
-            return self._weighted_combination(m1_output, m2_output)
+            combined_output = self._weighted_combination(m1_output, m2_output)
         elif self.combination_method == "alternating":
-            return self._alternating_combination(m1_output, m2_output)
+            combined_output = self._alternating_combination(m1_output, m2_output)
+        elif self.combination_method == "gating":
+            combined_output = self._gating_combination(m1_output, m2_output)
+        elif self.combination_method == "concat":
+            combined_output = self._concat_combination(m1_output, m2_output)
         else:
-            raise ValueError(f"Unknown combination method: {self.combination_method}")
+            raise ValueError(
+                f"Unknown combination method: {self.combination_method}"
+            )
+        return combined_output, m1_output, m2_output
 
     def _average_combination(
         self, m1_output: torch.Tensor, m2_output: torch.Tensor
     ) -> torch.Tensor:
         return (m1_output + m2_output) / 2.0
-
-    def _weighted_combination(
-        self, m1_output: torch.Tensor, m2_output: torch.Tensor
-    ) -> torch.Tensor:
-        return self.alpha * m1_output + (1 - self.alpha) * m2_output
 
     def _alternating_combination(
         self, m1_output: torch.Tensor, m2_output: torch.Tensor
@@ -67,6 +86,26 @@ class HybridMLP(torch.nn.Module):
         else:
             return m2_output
 
+    def _weighted_combination(
+        self, m1_output: torch.Tensor, m2_output: torch.Tensor
+    ) -> torch.Tensor:
+        weight_m1 = torch.sigmoid(self.weight_param)
+        weight_m2 = 1 - weight_m1
+        return weight_m1 * m1_output + weight_m2 * m2_output
+
+    def _gating_combination(
+        self, m1_output: torch.Tensor, m2_output: torch.Tensor
+    ) -> torch.Tensor:
+        combined_outputs = torch.cat((m1_output, m2_output), dim=-1)
+        gate = self.gating_net(combined_outputs)
+        return gate * m1_output + (1 - gate) * m2_output
+
+    def _concat_combination(
+        self, m1_output: torch.Tensor, m2_output: torch.Tensor
+    ) -> torch.Tensor:
+        combined_outputs = torch.cat((m1_output, m2_output), dim=-1)
+        return self.combination_mlp(combined_outputs)
+
     def list_parameters(self):
         """
         Extended parameter list including hybrid components.
@@ -74,13 +113,10 @@ class HybridMLP(torch.nn.Module):
         Returns:
         - params_list (list): List of parameter names including hybrid components
         """
-        params_list = super().list_parameters()
-        # Add sub-algorithm parameters
-        for name, _ in self.m1.named_parameters():
-            params_list.append(f"m1.{name}")
-        for name, _ in self.m2.named_parameters():
-            params_list.append(f"m2.{name}")
-
+        params_list = []
+        for name, _ in self.named_parameters():
+            if not name.startswith("m1.") and not name.startswith("m2."):
+                params_list.append(name)
         return params_list
 
     def gather_gradient_dict(self):
@@ -90,17 +126,9 @@ class HybridMLP(torch.nn.Module):
         Returns:
         - gradient_dict (dict): Dictionary of gradients for all parameters
         """
-        gradient_dict = super().gather_gradient_dict()
-        # Add gradients from each alg
-        for name, param in self.m1.named_parameters():
+        gradient_dict = {}
+        for name, param in self.named_parameters():
             if param.grad is not None:
-                gradient_dict[f"m1.{name}"] = (
-                    param.grad.detach().clone().numpy()
-                )
-        for name, param in self.m2.named_parameters():
-            if param.grad is not None:
-                gradient_dict[f"m2.{name}"] = (
-                    param.grad.detach().clone().numpy()
-                )
+                gradient_dict[name] = param.grad.detach().clone().numpy()
 
         return gradient_dict

@@ -1,5 +1,4 @@
-data/
-
+data/EMNIST/
 # Virtual Environment
 venv/
 env/
