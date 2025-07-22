@@ -1,23 +1,8 @@
-import os
-from pathlib import Path
-from IPython.display import Image, SVG, display
 
-import random
 from tqdm import tqdm
-import warnings
 import numpy as np
-import matplotlib.pyplot as plt
-import scipy
 import torch
-import torchvision
-import contextlib
-import io
-
-import torch.nn.functional as F
-import torch.nn as nn
-from torch import autograd
 from torch.autograd import Variable
-
 from .mlp import MultiLayerPerceptron
 
 def train_model_mirror(MLP, train_loader, valid_loader, optimizer, num_epochs=5, loss_type="NLL", mirror=False, m_lr=0.01, noise_amplitude=1):
