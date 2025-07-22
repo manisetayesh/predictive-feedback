@@ -239,7 +239,6 @@ class WMPerceptron(MultiLayerPerceptron):
     torch.nn.init.kaiming_uniform_(self.lin1.weight_fa)
     torch.nn.init.kaiming_uniform_(self.lin2.weight_fa)
 
-
   def forward(self, X, y=None):
 
     h = LinearWMFunction.apply(
@@ -261,33 +260,39 @@ class WMPerceptron(MultiLayerPerceptron):
   #Mirror function, converted from https://github.com/makrout/Deep-Learning-without-Weight-Transport/blob/master/fcnn/FCNN_WM.py
   def mirror(self, X, m_lr, noise_amplitude):
 
-    #randomly stimulate each layer
-    noise_in = noise_amplitude * (torch.randn_like(X.reshape(-1, self.num_inputs)) - 0.5)
-    #output of random stim
-    noise_out = noise_in.mm(self.lin1.weight.t())
+    with torch.no_grad():
 
-    #update FA weights via hebbian
-    grad_fa = m_lr * noise_out.t().mm(noise_in)
+        #randomly stimulate each layer
+        noise_in = noise_amplitude * (torch.randn_like(X.reshape(-1, self.num_inputs)) - 0.5)
+        #output of random stim
+        noise_out = noise_in.mm(self.lin1.weight.t())
 
-    grad_fa = grad_fa / len(noise_in) # average across batch
-    # center around 0
-    grad_fa = grad_fa - grad_fa.mean(axis=0)
-    self.lin1.weight_fa += grad_fa
+        #update FA weights via hebbian
+        grad_fa = m_lr * noise_out.t().mm(noise_in)
 
-    # if self.bias is not None:
-    #     noise_out += self.bias.unsqueeze(0).expand_as(noise_out)
+        self.lin1.weight_fa += grad_fa
 
-    noise_in = noise_amplitude * (torch.randn_like(noise_out) - 0.5)
-    noise_out = noise_in.mm(self.lin2.weight.t())
-    grad_fa = m_lr * noise_out.t().mm(noise_in)
-    # average across batch
-    grad_fa = grad_fa / len(noise_in) 
-    # center around 0
-    grad_fa = grad_fa - grad_fa.mean(axis=0)
-    self.lin2.weight_fa += grad_fa
-    # if self.bias is not None:
-    #     noise_out += self.bias.unsqueeze(0).expand_as(noise_out)
+        x = torch.randn(self.lin1.weight_fa.shape[0], 32, requires_grad=False)
+        y = x.t().mm(self.lin1.weight_fa)
+        y_std = torch.mean(torch.std(y, dim=1))
+        self.lin1.weight_fa = 0.5 * self.lin1.weight_fa / y_std
+
+        # if self.bias is not None:
+        #     noise_out += self.bias.unsqueeze(0).expand_as(noise_out)
+
+        noise_in = noise_amplitude * (torch.randn_like(noise_out) - 0.5)
+        noise_out = noise_in.mm(self.lin2.weight.t())
+        grad_fa = m_lr * noise_out.t().mm(noise_in)
+        self.lin2.weight_fa += grad_fa
+        # if self.bias is not None:
+        #     noise_out += self.bias.unsqueeze(0).expand_as(noise_out)
+
+        x = torch.randn(self.lin2.weight_fa.shape[0], 32, requires_grad=False)
+        y = x.t().mm(self.lin2.weight_fa)
+        y_std = torch.mean(torch.std(y, dim=1))
+        self.lin2.weight_fa = 0.5 * self.lin2.weight_fa / y_std
 
 
 
     return
+
