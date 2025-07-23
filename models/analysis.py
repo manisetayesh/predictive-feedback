@@ -506,3 +506,38 @@ class MultiModelComparator:
                 print(f"  {comp_name}: {comp_data['rdm_correlation']:.3f}")
 
         print(f"\n{'='*80}")
+
+
+def analyze_single_model(model, model_name, data_loader=None, max_batches=5):
+    """Analyze a single model."""
+    analyzer = UniversalModelAnalyzer(model, model_name)
+    results, labels = analyzer.analyze_model(data_loader, max_batches)
+
+    # Plot key layers
+    key_layers = ["final_output", "combined_output", "lin1_post_activation"]
+    for layer_name in key_layers:
+        if layer_name in results:
+            analyzer.plot_layer_analysis(results, labels, layer_name)
+            break  # Just plot the first available key layer
+
+    return analyzer, results, labels
+
+
+def compare_all_models(models_dict, data_loader=None, max_batches=3):
+    """Compare multiple models of different types."""
+    comparator = MultiModelComparator()
+
+    # Add all models
+    for name, model in models_dict.items():
+        comparator.add_model(model, name, data_loader, max_batches)
+
+    # Compare models
+    comparison_results = comparator.compare_models()
+
+    # Plot comparison
+    comparator.plot_model_comparison(comparison_results)
+
+    # Generate report
+    comparator.generate_report(comparison_results)
+
+    return comparator, comparison_results
