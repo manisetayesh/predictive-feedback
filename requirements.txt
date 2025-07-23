@@ -50,7 +50,9 @@ Pygments==2.19.2
 pyparsing==3.2.3
 python-dateutil==2.9.0.post0
 pyzmq==27.0.0
+scikit-learn==1.7.1 
 scipy==1.15.3
+seaborn==0.13.2
 six==1.17.0
 stack-data==0.6.3
 sympy==1.14.0
