@@ -1,16 +1,28 @@
 # Import TorchSeq2PC
 import TorchSeq2PC as T2PC
+import torch
+import torchvision
+import torch.nn as nn
+import numpy as np
+import matplotlib.pyplot as plt
+import time
+import os
 
 # Seed rng
 torch.manual_seed(0)
 
 from torchvision.datasets import MNIST
 
+# Construct the absolute path to the data directory
+# This makes the path relative to the script's location
+script_dir = os.path.dirname(os.path.abspath(__file__))
+data_dir = os.path.join(script_dir, '..', 'data')
+
 # Get training data structure
-train_dataset = MNIST('./', 
-      train=True, 
-      transform=torchvision.transforms.ToTensor(),  
-      download=True)
+train_dataset = MNIST(root=data_dir, 
+                      train=True, 
+                      transform=torchvision.transforms.ToTensor(),  
+                      download=False)
 
 # Number of trainin data points
 m = len(train_dataset)
@@ -37,7 +49,7 @@ print('device = ',device)
 # Define the nunmber of epochs, learning rate, 
 # and how often to print progress
 num_epochs=2
-LearningRate=.002
+LearningRate=0.0001
 PrintEvery=50
 
 # Choose an optimizer
@@ -117,7 +129,7 @@ LossesToPlot=np.zeros(total_num_steps)
 
 j=0     # Counters
 jj=0    
-t1=tm() # Get start time
+t1=time.time() # Get start time
 for k in range(num_epochs):
 
   # Re-initialize the training iterator (shuffles data for one epoch)
@@ -133,12 +145,11 @@ for k in range(num_epochs):
 
     # Perform inference on this batch
     vhat,Loss,dLdy,v,epsilon=T2PC.PCInfer(model,LossFun,X,Y,ErrType,eta,n)
-
+    
     # Update parameters    
     optimizer.step() 
 
     # Zero-out gradients     
-    model.zero_grad()
     optimizer.zero_grad()
 
     # Print and store loss
@@ -149,7 +160,7 @@ for k in range(num_epochs):
     jj+=1
 
 # Compute and print time spent training
-tTrain=tm()-t1
+tTrain=time.time()-t1
 print('Training time = ',tTrain,'sec')
 
 # Plot the loss curve
