@@ -1,14 +1,13 @@
 import copy
 import torch
 import torch.nn as nn
-import numpy as np
 from tqdm import tqdm
 from typing import Callable
-import matplotlib.pyplot as plt
-from torchvision import datasets, transforms
-from torch.utils.data import DataLoader, Subset, TensorDataset
+from torchvision import  transforms
 import random
 from collections import defaultdict
+from datasets_loader import load_omniglot
+from cnns import OMNIGLOT_CNN
 
 learning_rate = 0.003
 meta_step_size = 0.25
@@ -35,7 +34,7 @@ transform = transforms.Compose([
     lambda x: 1 - x  
 ])
 
-omniglot_train = datasets.Omniglot(root="./data", background=True, download=True, transform=transform)
+omniglot_train = load_omniglot()
 
 
 class_to_indices = defaultdict(list)
@@ -43,37 +42,6 @@ for idx, (img, label) in enumerate(omniglot_train):
     class_to_indices[label].append(idx)
 
 print(class_to_indices)
-class ConvBNReLU(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1)
-        self.bn = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU()
-
-    def forward(self, x):
-        x = self.conv(x)
-        x = self.bn(x)
-        x = self.relu(x)
-        return x
-
-class Model(nn.Module):
-    def __init__(self, classes):
-        super().__init__()
-        self.layer1 = ConvBNReLU(1, 64)
-        self.layer2 = ConvBNReLU(64, 64)
-        self.layer3 = ConvBNReLU(64, 64)
-        self.layer4 = ConvBNReLU(64, 64)
-        self.flatten = nn.Flatten()
-        self.fc = nn.Linear(64 * 2 * 2, classes)
-
-    def forward(self, x):
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-        x = self.flatten(x)
-        x = self.fc(x)
-        return x
 
 
 def reptile(model, nb_iterations: int, sample_task: Callable, perform_k_training_steps: Callable, k=1, epsilon=0.1):
@@ -139,7 +107,7 @@ def perform_k_training_steps(model, task, k, batch_size=10):
 
 
 if __name__ == "__main__":
-    model = Model(classes)
+    model = OMNIGLOT_CNN(classes)
     reptile(model, meta_iters, sample_task, perform_k_training_steps)
 
     

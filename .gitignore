@@ -1,4 +1,5 @@
 data/EMNIST/
+data/omniglot-py/
 # Virtual Environment
 venv/
 env/
