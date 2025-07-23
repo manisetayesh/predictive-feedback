@@ -1,79 +1,30 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision
-import torchvision.transforms as transforms
-from torchvision.transforms import ToTensor, Compose, RandomRotation
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from datasets_loader import load_extended_mnist
+from cnns import EMNIST_CNN
+
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-transform = Compose([
-    RandomRotation(degrees=0),  
-    ToTensor(),
-    lambda x: x.transpose(1, 2).flip(1)  
-])
 
-train_dataset = torchvision.datasets.EMNIST(
-    root='./data',
-    split='byclass',
-    train=True,
-    download=True,
-    transform=transform
-) #Change this once data is downloaded in the data folder.
+train_dataset, test_dataset = load_extended_mnist()
 
-test_dataset = torchvision.datasets.EMNIST(
-    root='./data',
-    split='byclass', #currenlty contains upper case letters, lower case letters and digits
-    train=False,
-    download=True,
-    transform=transform
-)
 
 batch_size = 128
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
 
-class EMNIST_CNN(nn.Module):
-    def __init__(self, num_classes=62):
-        super(EMNIST_CNN, self).__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=5, padding=2),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Dropout(0.4)
-        ) # Three convolutional layers maybe an overkill?
-        
-        self.classifier = nn.Sequential(
-            nn.Linear(128 * 3 * 3, 256),
-            nn.BatchNorm1d(256),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(256, num_classes)
-        )
 
-    def forward(self, x):
-        x = self.features(x)
-        x = x.view(x.size(0), -1)
-        x = self.classifier(x)
-        return x
     
 model = EMNIST_CNN().to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=3, factor=0.5, verbose=True)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=3, factor=0.5)
 
 def train_model(model, train_loader, criterion, optimizer, epoch):
     model.train()
