@@ -11,8 +11,7 @@ import matplotlib.pyplot as plt
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-transform = Compose([
-    RandomRotation(degrees=0),  
+transform = Compose([  
     ToTensor(),
     lambda x: x.transpose(1, 2).flip(1)  
 ])
@@ -73,7 +72,7 @@ class EMNIST_CNN(nn.Module):
 model = EMNIST_CNN().to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=3, factor=0.5, verbose=True)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=3, factor=0.5)
 
 def train_model(model, train_loader, criterion, optimizer, epoch):
     model.train()
