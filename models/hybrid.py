@@ -51,7 +51,7 @@ class HybridMLP(torch.nn.Module):
                 bias=True,
             )
         else:
-            NUM_HIDDEN = kwargs.get("num_hidden", self.num_outputs)
+            NUM_HIDDEN = kwargs.get("num_hidden", self.m1.num_hidden)
             ACTIVATION = kwargs.get("num_hidden", self.m1.activation_type)
             self.mlp = FAPerceptron(
                 num_inputs=self.num_outputs * 2,
